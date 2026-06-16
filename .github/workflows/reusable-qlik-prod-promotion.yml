@@ -29,12 +29,37 @@ on:
         type: boolean
         default: true
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
+    name: Checkout Qlik artifact repository
     runs-on: ubuntu-latest
+
     steps:
       - name: Show received inputs
         run: |
           echo "Operation: ${{ inputs.operation }}"
           echo "Jira key: ${{ inputs.jira_key }}"
           echo "Artifact repo: ${{ inputs.artifact_repo_full_name }}"
+          echo "Artifact ref: ${{ inputs.artifact_ref }}"
+          echo "Source branch: ${{ inputs.source_branch }}"
+          echo "Source SHA: ${{ inputs.source_sha }}"
+          echo "Main SHA: ${{ inputs.main_sha }}"
+          echo "Dry run: ${{ inputs.dry_run }}"
+
+      - name: Checkout Qlik artifact repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.artifact_repo_full_name }}
+          ref: ${{ inputs.artifact_ref }}
+          path: artifact
+
+      - name: Confirm artifact checkout
+        run: |
+          echo "Checked out artifact repository:"
+          pwd
+          ls -la
+          echo "Artifact folder:"
+          ls -la artifact
