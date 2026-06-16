@@ -153,6 +153,24 @@ jobs:
           echo "  Size bytes: $ARTIFACT_SIZE_BYTES"
           echo "  SHA256: $ARTIFACT_SHA256"
 
+      - name: Resolve target Qlik space
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TARGET_SPACE_NAME="Monitoring Apps - CICD POC"
+          TARGET_ENVIRONMENT="sandbox-cicd-poc"
+
+          {
+            echo "target_space_name=$TARGET_SPACE_NAME"
+            echo "target_environment=$TARGET_ENVIRONMENT"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Resolved target Qlik space:"
+          echo "  Environment: $TARGET_ENVIRONMENT"
+          echo "  Space: $TARGET_SPACE_NAME"
+          
       - name: Confirm artifact checkout
         run: |
           echo "Artifact folder:"
