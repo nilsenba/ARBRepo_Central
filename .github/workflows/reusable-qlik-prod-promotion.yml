@@ -34,7 +34,7 @@ permissions:
 
 jobs:
   deploy:
-    name: Checkout Qlik artifact repository
+    name: Resolve promotion context
     runs-on: ubuntu-latest
 
     steps:
@@ -56,10 +56,65 @@ jobs:
           ref: ${{ inputs.artifact_ref }}
           path: artifact
 
+      - name: Resolve and validate promotion context
+        id: context
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+          JIRA_KEY: ${{ inputs.jira_key }}
+          ARTIFACT_REPO_FULL_NAME: ${{ inputs.artifact_repo_full_name }}
+          ARTIFACT_REF: ${{ inputs.artifact_ref }}
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MAIN_SHA: ${{ inputs.main_sha }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$JIRA_KEY" !~ ^[A-Z][A-Z0-9]+-[0-9]+$ ]]; then
+            echo "Jira key must look like BIOPS-64108."
+            exit 1
+          fi
+
+          if [[ "$SOURCE_BRANCH" != "$JIRA_KEY" ]]; then
+            echo "Source branch must match Jira key."
+            echo "Jira key: $JIRA_KEY"
+            echo "Source branch: $SOURCE_BRANCH"
+            exit 1
+          fi
+
+          if [[ -z "$ARTIFACT_REPO_FULL_NAME" || -z "$ARTIFACT_REF" || -z "$MAIN_SHA" ]]; then
+            echo "Artifact repo, artifact ref, and main SHA are required."
+            exit 1
+          fi
+
+          CHECKED_OUT_SHA="$(git -C artifact rev-parse HEAD)"
+          ARTIFACT_REPO_NAME="${ARTIFACT_REPO_FULL_NAME##*/}"
+
+          {
+            echo "jira_key=$JIRA_KEY"
+            echo "artifact_repo_full_name=$ARTIFACT_REPO_FULL_NAME"
+            echo "artifact_repo_name=$ARTIFACT_REPO_NAME"
+            echo "artifact_ref=$ARTIFACT_REF"
+            echo "checked_out_sha=$CHECKED_OUT_SHA"
+            echo "source_branch=$SOURCE_BRANCH"
+            echo "source_sha=$SOURCE_SHA"
+            echo "main_sha=$MAIN_SHA"
+            echo "dry_run=$DRY_RUN"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Resolved promotion context:"
+          echo "  Jira key: $JIRA_KEY"
+          echo "  Artifact repo: $ARTIFACT_REPO_FULL_NAME"
+          echo "  Artifact repo name: $ARTIFACT_REPO_NAME"
+          echo "  Artifact ref requested: $ARTIFACT_REF"
+          echo "  Artifact checkout SHA: $CHECKED_OUT_SHA"
+          echo "  Source branch: $SOURCE_BRANCH"
+          echo "  Source SHA declared: $SOURCE_SHA"
+          echo "  Main SHA declared: $MAIN_SHA"
+          echo "  Dry run: $DRY_RUN"
+
       - name: Confirm artifact checkout
         run: |
-          echo "Checked out artifact repository:"
-          pwd
-          ls -la
           echo "Artifact folder:"
           ls -la artifact
