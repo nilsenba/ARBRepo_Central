@@ -114,6 +114,45 @@ jobs:
           echo "  Main SHA declared: $MAIN_SHA"
           echo "  Dry run: $DRY_RUN"
 
+      - name: Locate Qlik package artifact
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t qvf_files < <(find artifact -type f -iname "*.qvf" | sort)
+
+          if [[ "${#qvf_files[@]}" -eq 0 ]]; then
+            echo "No Qlik .qvf artifact found in the checked-out artifact repository."
+            echo "Files found:"
+            find artifact -type f | sort
+            exit 1
+          fi
+
+          if [[ "${#qvf_files[@]}" -gt 1 ]]; then
+            echo "Multiple Qlik .qvf artifacts found. The workflow needs exactly one package."
+            printf '%s\n' "${qvf_files[@]}"
+            exit 1
+          fi
+
+          ARTIFACT_PATH="${qvf_files[0]}"
+          ARTIFACT_NAME="$(basename "$ARTIFACT_PATH")"
+          ARTIFACT_SIZE_BYTES="$(wc -c < "$ARTIFACT_PATH" | tr -d ' ')"
+          ARTIFACT_SHA256="$(sha256sum "$ARTIFACT_PATH" | awk '{print $1}')"
+
+          {
+            echo "artifact_path=$ARTIFACT_PATH"
+            echo "artifact_name=$ARTIFACT_NAME"
+            echo "artifact_size_bytes=$ARTIFACT_SIZE_BYTES"
+            echo "artifact_sha256=$ARTIFACT_SHA256"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Located Qlik package artifact:"
+          echo "  Path: $ARTIFACT_PATH"
+          echo "  Name: $ARTIFACT_NAME"
+          echo "  Size bytes: $ARTIFACT_SIZE_BYTES"
+          echo "  SHA256: $ARTIFACT_SHA256"
+
       - name: Confirm artifact checkout
         run: |
           echo "Artifact folder:"
