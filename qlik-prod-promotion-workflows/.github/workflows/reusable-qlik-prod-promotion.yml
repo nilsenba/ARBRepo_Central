@@ -1,0 +1,40 @@
+name: Reusable Qlik Production Promotion
+
+on:
+  workflow_call:
+    inputs:
+      operation:
+        required: true
+        type: string
+      jira_key:
+        required: true
+        type: string
+      artifact_repo_full_name:
+        required: true
+        type: string
+      artifact_ref:
+        required: true
+        type: string
+      source_branch:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      main_sha:
+        required: true
+        type: string
+      dry_run:
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show received inputs
+        run: |
+          echo "Operation: ${{ inputs.operation }}"
+          echo "Jira key: ${{ inputs.jira_key }}"
+          echo "Artifact repo: ${{ inputs.artifact_repo_full_name }}"
