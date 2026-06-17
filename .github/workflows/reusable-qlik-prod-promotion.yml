@@ -3,11 +3,6 @@ name: Reusable Qlik Production Promotion
 on:
   workflow_call:
     inputs:
-        secrets:
-      QLIK_SANDBOX_TENANT_URL:
-        required: false
-      QLIK_SANDBOX_API_KEY:
-        required: false
       operation:
         required: true
         type: string
@@ -33,7 +28,12 @@ on:
         required: false
         type: boolean
         default: true
-
+    secrets:
+      QLIK_SANDBOX_TENANT_URL:
+        required: false
+      QLIK_SANDBOX_API_KEY:
+        required: false
+        
 permissions:
   contents: read
 
