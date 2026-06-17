@@ -219,12 +219,12 @@ jobs:
           Write-Host "  Name: $($space.name)"
           Write-Host "  Type: $($space.type)"
           Write-Host "  Roles: $($space.meta.roles -join ', ')"
-          Write-Host "  Actions: $($space.meta.actions -join ', ')"    
+          Write-Host "  Actions: $($space.meta.actions -join ', ')"
 
           if ($space.meta.actions -notcontains "create") {
             throw "API key user can see the space but does not have 'create' action in '$env:TARGET_SPACE_NAME'. Add the user/service account to the space with create/import-capable access."
           }
-          
+
           "space_id=$spaceId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Resolved Qlik sandbox space:"
           Write-Host "  Name: $env:TARGET_SPACE_NAME"
@@ -278,21 +278,43 @@ jobs:
           $encodedSpaceId = [System.Uri]::EscapeDataString($env:QLIK_SPACE_ID)
           $uri = "$tenant/api/v1/apps/import?mode=NEW&spaceId=$encodedSpaceId&name=$encodedName"
 
-          $response = Invoke-RestMethod `
+          Write-Host "Import request:"
+          Write-Host "  Endpoint: /api/v1/apps/import"
+          Write-Host "  Mode: NEW"
+          Write-Host "  App name: $appName"
+          Write-Host "  Space ID: $env:QLIK_SPACE_ID"
+
+          $response = Invoke-WebRequest `
             -Method Post `
             -Uri $uri `
             -Headers $headers `
             -ContentType "application/octet-stream" `
-            -InFile $env:QLIK_ARTIFACT_PATH
+            -InFile $env:QLIK_ARTIFACT_PATH `
+            -SkipHttpErrorCheck
 
-          $appId = $response.attributes.id
+          if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
+            Write-Host "Qlik import failed."
+            Write-Host "  HTTP status: $($response.StatusCode)"
+
+            if (-not [string]::IsNullOrWhiteSpace($response.Content)) {
+              Write-Host "Qlik error body:"
+              Write-Host $response.Content
+            } else {
+              Write-Host "Qlik returned no response body."
+            }
+
+            throw "Qlik import failed with HTTP status $($response.StatusCode)."
+          }
+
+          $responseBody = $response.Content | ConvertFrom-Json
+          $appId = $responseBody.attributes.id
           "app_id=$appId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
           Write-Host "Imported QVF into Qlik sandbox:"
           Write-Host "  App name: $appName"
           Write-Host "  App ID: $appId"
           Write-Host "  Space ID: $env:QLIK_SPACE_ID"
-          
+
       - name: Confirm artifact checkout
         run: |
           echo "Artifact folder:"
