@@ -226,9 +226,11 @@ jobs:
           }
 
           "space_id=$spaceId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "space_type=$($space.type)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Resolved Qlik sandbox space:"
           Write-Host "  Name: $env:TARGET_SPACE_NAME"
           Write-Host "  ID: $spaceId"
+          Write-Host "  Type: $($space.type)"
 
       - name: Check Qlik app privileges
         shell: pwsh
@@ -253,6 +255,7 @@ jobs:
           QLIK_SANDBOX_TENANT_URL: ${{ secrets.QLIK_SANDBOX_TENANT_URL }}
           QLIK_SANDBOX_API_KEY: ${{ secrets.QLIK_SANDBOX_API_KEY }}
           QLIK_SPACE_ID: ${{ steps.qlik_space.outputs.space_id }}
+          QLIK_SPACE_TYPE: ${{ steps.qlik_space.outputs.space_type }}
           QLIK_ARTIFACT_PATH: ${{ steps.artifact.outputs.artifact_path }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
@@ -274,46 +277,140 @@ jobs:
             Accept = "application/json"
           }
 
+          function Invoke-QlikRequest {
+            param(
+              [Parameter(Mandatory=$true)][string]$Label,
+              [Parameter(Mandatory=$true)][string]$Method,
+              [Parameter(Mandatory=$true)][string]$Uri,
+              [hashtable]$Headers,
+              [string]$ContentType,
+              [string]$InFile,
+              [string]$Body
+            )
+
+            $parameters = @{
+              Method = $Method
+              Uri = $Uri
+              Headers = $Headers
+              SkipHttpErrorCheck = $true
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($ContentType)) {
+              $parameters.ContentType = $ContentType
+            }
+            if (-not [string]::IsNullOrWhiteSpace($InFile)) {
+              $parameters.InFile = $InFile
+            }
+            if (-not [string]::IsNullOrWhiteSpace($Body)) {
+              $parameters.Body = $Body
+            }
+
+            $result = Invoke-WebRequest @parameters
+
+            if ($result.StatusCode -lt 200 -or $result.StatusCode -ge 300) {
+              Write-Host "$Label failed."
+              Write-Host "  HTTP status: $($result.StatusCode)"
+
+              if (-not [string]::IsNullOrWhiteSpace($result.Content)) {
+                Write-Host "Qlik error body:"
+                Write-Host $result.Content
+              } else {
+                Write-Host "Qlik returned no response body."
+              }
+
+              throw "$Label failed with HTTP status $($result.StatusCode)."
+            }
+
+            return $result
+          }
+
           $encodedName = [System.Uri]::EscapeDataString($appName)
-          $encodedSpaceId = [System.Uri]::EscapeDataString($env:QLIK_SPACE_ID)
-          $uri = "$tenant/api/v1/apps/import?mode=NEW&spaceId=$encodedSpaceId&name=$encodedName"
+          $spaceType = $env:QLIK_SPACE_TYPE
+          if ([string]::IsNullOrWhiteSpace($spaceType)) {
+            $spaceType = "unknown"
+          }
 
           Write-Host "Import request:"
           Write-Host "  Endpoint: /api/v1/apps/import"
           Write-Host "  Mode: NEW"
           Write-Host "  App name: $appName"
           Write-Host "  Space ID: $env:QLIK_SPACE_ID"
+          Write-Host "  Space type: $spaceType"
 
-          $response = Invoke-WebRequest `
-            -Method Post `
-            -Uri $uri `
-            -Headers $headers `
-            -ContentType "application/octet-stream" `
-            -InFile $env:QLIK_ARTIFACT_PATH `
-            -SkipHttpErrorCheck
+          if ($spaceType -eq "managed") {
+            $importUri = "$tenant/api/v1/apps/import?mode=NEW&name=$encodedName"
+            Write-Host "Managed target space detected. Importing source app first, then publishing to managed space."
 
-          if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
-            Write-Host "Qlik import failed."
-            Write-Host "  HTTP status: $($response.StatusCode)"
+            $importResponse = Invoke-QlikRequest `
+              -Label "Qlik source import" `
+              -Method "Post" `
+              -Uri $importUri `
+              -Headers $headers `
+              -ContentType "application/octet-stream" `
+              -InFile $env:QLIK_ARTIFACT_PATH
 
-            if (-not [string]::IsNullOrWhiteSpace($response.Content)) {
-              Write-Host "Qlik error body:"
-              Write-Host $response.Content
-            } else {
-              Write-Host "Qlik returned no response body."
+            $importBody = $importResponse.Content | ConvertFrom-Json
+            $sourceAppId = $importBody.attributes.id
+            if ([string]::IsNullOrWhiteSpace($sourceAppId)) {
+              throw "Qlik source import succeeded, but no app ID was returned."
             }
 
-            throw "Qlik import failed with HTTP status $($response.StatusCode)."
+            Write-Host "Imported QVF as source app:"
+            Write-Host "  Source app ID: $sourceAppId"
+
+            $publishUri = "$tenant/api/v1/apps/$sourceAppId/publish"
+            $publishBody = @{
+              moveApp = $false
+              spaceId = $env:QLIK_SPACE_ID
+              attributes = @{
+                name = $appName
+                description = "Published by GitHub Actions from $env:GITHUB_REPOSITORY run $env:GITHUB_RUN_ID"
+              }
+            } | ConvertTo-Json -Depth 5
+
+            Write-Host "Publish request:"
+            Write-Host "  Endpoint: /api/v1/apps/$sourceAppId/publish"
+            Write-Host "  Target managed space ID: $env:QLIK_SPACE_ID"
+
+            $publishResponse = Invoke-QlikRequest `
+              -Label "Qlik managed-space publish" `
+              -Method "Post" `
+              -Uri $publishUri `
+              -Headers $headers `
+              -ContentType "application/json" `
+              -Body $publishBody
+
+            $publishResponseBody = $publishResponse.Content | ConvertFrom-Json
+            $publishedAppId = $publishResponseBody.attributes.id
+            "source_app_id=$sourceAppId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "app_id=$publishedAppId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+            Write-Host "Published QVF into Qlik managed space:"
+            Write-Host "  App name: $appName"
+            Write-Host "  Source app ID: $sourceAppId"
+            Write-Host "  Published app ID: $publishedAppId"
+            Write-Host "  Managed space ID: $env:QLIK_SPACE_ID"
+          } else {
+            $encodedSpaceId = [System.Uri]::EscapeDataString($env:QLIK_SPACE_ID)
+            $uri = "$tenant/api/v1/apps/import?mode=NEW&spaceId=$encodedSpaceId&name=$encodedName"
+
+            $response = Invoke-QlikRequest `
+              -Label "Qlik import" `
+              -Method "Post" `
+              -Uri $uri `
+              -Headers $headers `
+              -ContentType "application/octet-stream" `
+              -InFile $env:QLIK_ARTIFACT_PATH
+
+            $responseBody = $response.Content | ConvertFrom-Json
+            $appId = $responseBody.attributes.id
+            "app_id=$appId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+            Write-Host "Imported QVF into Qlik sandbox:"
+            Write-Host "  App name: $appName"
+            Write-Host "  App ID: $appId"
+            Write-Host "  Space ID: $env:QLIK_SPACE_ID"
           }
-
-          $responseBody = $response.Content | ConvertFrom-Json
-          $appId = $responseBody.attributes.id
-          "app_id=$appId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-          Write-Host "Imported QVF into Qlik sandbox:"
-          Write-Host "  App name: $appName"
-          Write-Host "  App ID: $appId"
-          Write-Host "  Space ID: $env:QLIK_SPACE_ID"
 
       - name: Confirm artifact checkout
         run: |
