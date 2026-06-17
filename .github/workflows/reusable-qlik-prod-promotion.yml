@@ -217,55 +217,55 @@ jobs:
           Write-Host "Resolved Qlik sandbox space:"
           Write-Host "  Name: $env:TARGET_SPACE_NAME"
           Write-Host "  ID: $spaceId"
+
+      - name: Import QVF into Qlik sandbox POC space
+        id: qlik_import
+        shell: pwsh
+        env:
+          QLIK_SANDBOX_TENANT_URL: ${{ secrets.QLIK_SANDBOX_TENANT_URL }}
+          QLIK_SANDBOX_API_KEY: ${{ secrets.QLIK_SANDBOX_API_KEY }}
+          QLIK_SPACE_ID: ${{ steps.qlik_space.outputs.space_id }}
+          QLIK_ARTIFACT_PATH: ${{ steps.artifact.outputs.artifact_path }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dryRun = [System.Convert]::ToBoolean($env:DRY_RUN)
+          $appName = [System.IO.Path]::GetFileNameWithoutExtension($env:QLIK_ARTIFACT_PATH)
+
+          if ($dryRun) {
+            Write-Host "Dry run enabled. Would import QVF:"
+            Write-Host "  File: $env:QLIK_ARTIFACT_PATH"
+            Write-Host "  App name: $appName"
+            Write-Host "  Space ID: $env:QLIK_SPACE_ID"
+            return
+          }
+
+          $tenant = $env:QLIK_SANDBOX_TENANT_URL.TrimEnd("/")
+          $headers = @{
+            Authorization = "Bearer $env:QLIK_SANDBOX_API_KEY"
+            Accept = "application/json"
+          }
+
+          $encodedName = [System.Uri]::EscapeDataString($appName)
+          $encodedSpaceId = [System.Uri]::EscapeDataString($env:QLIK_SPACE_ID)
+          $uri = "$tenant/api/v1/apps/import?mode=NEW&spaceId=$encodedSpaceId&name=$encodedName"
+
+          $response = Invoke-RestMethod `
+            -Method Post `
+            -Uri $uri `
+            -Headers $headers `
+            -ContentType "application/octet-stream" `
+            -InFile $env:QLIK_ARTIFACT_PATH
+
+          $appId = $response.attributes.id
+          "app_id=$appId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          Write-Host "Imported QVF into Qlik sandbox:"
+          Write-Host "  App name: $appName"
+          Write-Host "  App ID: $appId"
+          Write-Host "  Space ID: $env:QLIK_SPACE_ID"
           
-            - name: Import QVF into Qlik sandbox POC space
-                id: qlik_import
-                shell: pwsh
-                env:
-                  QLIK_SANDBOX_TENANT_URL: ${{ secrets.QLIK_SANDBOX_TENANT_URL }}
-                  QLIK_SANDBOX_API_KEY: ${{ secrets.QLIK_SANDBOX_API_KEY }}
-                  QLIK_SPACE_ID: ${{ steps.qlik_space.outputs.space_id }}
-                  QLIK_ARTIFACT_PATH: ${{ steps.artifact.outputs.artifact_path }}
-                  DRY_RUN: ${{ inputs.dry_run }}
-                run: |
-                  $ErrorActionPreference = "Stop"
-                  $dryRun = [System.Convert]::ToBoolean($env:DRY_RUN)
-                  $appName = [System.IO.Path]::GetFileNameWithoutExtension($env:QLIK_ARTIFACT_PATH)
-                
-                  if ($dryRun) {
-                    Write-Host "Dry run enabled. Would import QVF:"
-                    Write-Host "  File: $env:QLIK_ARTIFACT_PATH"
-                    Write-Host "  App name: $appName"
-                    Write-Host "  Space ID: $env:QLIK_SPACE_ID"
-                    return
-                  }
-                
-                  $tenant = $env:QLIK_SANDBOX_TENANT_URL.TrimEnd("/")
-                  $headers = @{
-                    Authorization = "Bearer $env:QLIK_SANDBOX_API_KEY"
-                    Accept = "application/json"
-                  }
-                
-                  $encodedName = [System.Uri]::EscapeDataString($appName)
-                  $encodedSpaceId = [System.Uri]::EscapeDataString($env:QLIK_SPACE_ID)
-                  $uri = "$tenant/api/v1/apps/import?mode=NEW&spaceId=$encodedSpaceId&name=$encodedName"
-                
-                  $response = Invoke-RestMethod `
-                    -Method Post `
-                    -Uri $uri `
-                    -Headers $headers `
-                    -ContentType "application/octet-stream" `
-                    -InFile $env:QLIK_ARTIFACT_PATH
-                
-                  $appId = $response.attributes.id
-                  "app_id=$appId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-                
-                  Write-Host "Imported QVF into Qlik sandbox:"
-                  Write-Host "  App name: $appName"
-                  Write-Host "  App ID: $appId"
-                  Write-Host "  Space ID: $env:QLIK_SPACE_ID"
-          
-              - name: Confirm artifact checkout
-                run: |
-                  echo "Artifact folder:"
-                  ls -la artifact
+      - name: Confirm artifact checkout
+        run: |
+          echo "Artifact folder:"
+          ls -la artifact
