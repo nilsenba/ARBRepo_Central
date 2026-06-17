@@ -218,6 +218,22 @@ jobs:
           Write-Host "  Name: $env:TARGET_SPACE_NAME"
           Write-Host "  ID: $spaceId"
 
+      - name: Check Qlik app privileges
+        shell: pwsh
+        env:
+          QLIK_SANDBOX_TENANT_URL: ${{ secrets.QLIK_SANDBOX_TENANT_URL }}
+          QLIK_SANDBOX_API_KEY: ${{ secrets.QLIK_SANDBOX_API_KEY }}
+        run: |
+          $tenant = $env:QLIK_SANDBOX_TENANT_URL.TrimEnd("/")
+          $headers = @{
+            Authorization = "Bearer $env:QLIK_SANDBOX_API_KEY"
+            Accept = "application/json"
+          }
+
+          $privileges = Invoke-RestMethod -Method Get -Uri "$tenant/api/v1/apps/privileges" -Headers $headers
+          Write-Host "Qlik app privileges for API key user:"
+          $privileges | ConvertTo-Json -Depth 5
+
       - name: Import QVF into Qlik sandbox POC space
         id: qlik_import
         shell: pwsh
