@@ -213,6 +213,18 @@ jobs:
           }
 
           $spaceId = $matches[0].id
+          $space = $matches[0]
+
+          Write-Host "Qlik target space access:"
+          Write-Host "  Name: $($space.name)"
+          Write-Host "  Type: $($space.type)"
+          Write-Host "  Roles: $($space.meta.roles -join ', ')"
+          Write-Host "  Actions: $($space.meta.actions -join ', ')"    
+
+          if ($space.meta.actions -notcontains "create") {
+            throw "API key user can see the space but does not have 'create' action in '$env:TARGET_SPACE_NAME'. Add the user/service account to the space with create/import-capable access."
+          }
+          
           "space_id=$spaceId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Resolved Qlik sandbox space:"
           Write-Host "  Name: $env:TARGET_SPACE_NAME"
