@@ -442,7 +442,7 @@ jobs:
           COMMIT_URL="https://github.com/${ARTIFACT_REPO}/commit/${ARTIFACT_SHA}"
 
           cat > deployment_change_log.sql <<SQL
-          MERGE INTO PLAY.DEPLOYMENT_CHANGE_LOG AS tgt
+          MERGE INTO CHANGE_MGMT.DEPLOYMENT_CHANGE_LOG AS tgt
           USING (
               SELECT
                   'Qlik' AS BI_TOOL,
