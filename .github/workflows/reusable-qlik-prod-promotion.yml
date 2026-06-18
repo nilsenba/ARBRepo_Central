@@ -460,15 +460,15 @@ jobs:
                   '${{ steps.qlik_import.outputs.app_id }}' AS APP_ID,
                   '${GITHUB_ACTOR}' AS APP_OWNER,
                   '${ARTIFACT_REPO}' AS GITHUB_REPO,
-                  '${{ steps.context.outputs.source_branch }}' AS GITHUB_BRANCH,
-                  '${ARTIFACT_SHA}' AS GITHUB_COMMIT_SHA,
+                  '${{ inputs.source_branch }}' AS GITHUB_BRANCH,
+                  '${{ steps.context.outputs.checked_out_sha }}' AS GITHUB_COMMIT_SHA,
                   '${COMMIT_URL}' AS GITHUB_COMMIT_URL,
                   'Production promotion of ${APP_NAME} to Qlik space ${{ steps.target.outputs.target_space_name }}. Artifact SHA256 ${{ steps.artifact.outputs.artifact_sha256 }}. GitHub run https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}.' AS DESCRIPTION,
                   '${GITHUB_ACTOR}' AS CHANGED_BY,
                   '${GITHUB_ACTOR}' AS CHANGE_APPROVER,
-                  '${{ steps.context.outputs.jira_key }}' AS RELEASE_NUMBER,
+                  '${{ inputs.jira_key }}' AS RELEASE_NUMBER,
                   '${CODE_REPO_LINK}' AS CODE_REPO_LINK,
-                  '${{ steps.context.outputs.jira_key }}' AS JIRA_TICKET_NUMBER,
+                  '${{ inputs.jira_key }}' AS JIRA_TICKET_NUMBER,
                   'publish success' AS STATUS,
                   'NO ERROR' AS ERROR_MESSAGE,
                   CURRENT_TIMESTAMP()::TIMESTAMP_NTZ AS CREATED_AT,
@@ -525,6 +525,11 @@ jobs:
           SQL
 
           snow connection test -x
+          echo "Audit values:"
+          echo "  branch=${{ inputs.source_branch }}"
+          echo "  commit=${{ steps.context.outputs.checked_out_sha }}"
+          echo "  jira=${{ inputs.jira_key }}"
+          echo "  status=publish success"
           snow sql -x \
             --database "$SNOWFLAKE_DATABASE" \
             --schema "$SNOWFLAKE_SCHEMA" \
