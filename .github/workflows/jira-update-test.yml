@@ -17,7 +17,12 @@ on:
         description: Optional Jira transition ID
         required: false
         type: string
-
+      payload_json:
+        description: Deployment audit payload from ARBAutomation
+        required: false
+        default: "{}"
+        type: string
+        
 permissions:
   contents: read
 
@@ -34,6 +39,7 @@ jobs:
           JIRA_KEY: ${{ inputs.jira_key }}
           DRY_RUN: ${{ inputs.dry_run }}
           TRANSITION_ID: ${{ inputs.transition_id }}
+          PAYLOAD_JSON: ${{ inputs.payload_json }}
         run: |
           $ErrorActionPreference = "Stop"
 
