@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Update Jira issue
-        shell: pwsh
+        shell: powershell
         env:
           JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
           JIRA_PAT: ${{ secrets.JIRA_PAT }}
