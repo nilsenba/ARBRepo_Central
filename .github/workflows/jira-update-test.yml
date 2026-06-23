@@ -11,7 +11,7 @@ on:
       dry_run:
         description: Validate only, do not write to Jira
         required: true
-        default: true
+        default: false
         type: boolean
       transition_id:
         description: Optional Jira transition ID
