@@ -30,7 +30,7 @@ jobs:
         shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
         env:
           JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
-          JIRA_PAT: ${{ secrets.JIRA_PAT }}
+          JIRA_PAT: ${{ secrets.QLIK_JIRA_PAT }}
           JIRA_KEY: ${{ inputs.jira_key }}
           DRY_RUN: ${{ inputs.dry_run }}
           TRANSITION_ID: ${{ inputs.transition_id }}
