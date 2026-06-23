@@ -1,0 +1,75 @@
+name: Jira Update Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      jira_key:
+        description: Jira issue key
+        required: true
+        default: BIOPS-48158
+        type: string
+      dry_run:
+        description: Validate only, do not write to Jira
+        required: true
+        default: true
+        type: boolean
+      transition_id:
+        description: Optional Jira transition ID
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  jira-update:
+    runs-on: [self-hosted, nov-network, jira]
+
+    steps:
+      - name: Update Jira issue
+        shell: pwsh
+        env:
+          JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
+          JIRA_PAT: ${{ secrets.JIRA_PAT }}
+          JIRA_KEY: ${{ inputs.jira_key }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          TRANSITION_ID: ${{ inputs.transition_id }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if ([string]::IsNullOrWhiteSpace($env:JIRA_BASE_URL)) { throw "Missing JIRA_BASE_URL." }
+          if ([string]::IsNullOrWhiteSpace($env:JIRA_PAT)) { throw "Missing JIRA_PAT." }
+          if ($env:JIRA_KEY -notmatch '^[A-Z][A-Z0-9]+-[0-9]+$') { throw "Invalid Jira key: $env:JIRA_KEY" }
+
+          $baseUrl = $env:JIRA_BASE_URL.TrimEnd("/")
+          $headers = @{
+            Authorization = "Bearer $env:JIRA_PAT"
+            Accept = "application/json"
+            "Content-Type" = "application/json"
+          }
+
+          $issue = Invoke-RestMethod -Method Get -Uri "$baseUrl/rest/api/2/issue/$env:JIRA_KEY" -Headers $headers
+          Write-Host "Resolved Jira issue: $($issue.key) - $($issue.fields.summary)"
+
+          $commentBody = @{
+            body = "GitHub Actions Jira update test succeeded. Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          } | ConvertTo-Json -Depth 5
+
+          if ([System.Convert]::ToBoolean($env:DRY_RUN)) {
+            Write-Host "Dry run enabled. Would add Jira comment to $env:JIRA_KEY."
+            return
+          }
+
+          Invoke-RestMethod -Method Post -Uri "$baseUrl/rest/api/2/issue/$env:JIRA_KEY/comment" -Headers $headers -Body $commentBody
+          Write-Host "Added Jira comment to $env:JIRA_KEY."
+
+          if (-not [string]::IsNullOrWhiteSpace($env:TRANSITION_ID)) {
+            $transitionBody = @{
+              transition = @{
+                id = $env:TRANSITION_ID
+              }
+            } | ConvertTo-Json -Depth 5
+
+            Invoke-RestMethod -Method Post -Uri "$baseUrl/rest/api/2/issue/$env:JIRA_KEY/transitions" -Headers $headers -Body $transitionBody
+            Write-Host "Transitioned Jira issue $env:JIRA_KEY using transition ID $env:TRANSITION_ID."
+          }
