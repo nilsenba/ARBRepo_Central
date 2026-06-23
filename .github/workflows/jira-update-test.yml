@@ -22,7 +22,7 @@ on:
         required: false
         default: "{}"
         type: string
-        
+
 permissions:
   contents: read
 
@@ -43,6 +43,26 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
+          function Get-PayloadValue {
+            param(
+              [object]$Payload,
+              [string[]]$Names
+            )
+
+            if ($null -eq $Payload) {
+              return $null
+            }
+
+            foreach ($name in $Names) {
+              $property = $Payload.PSObject.Properties | Where-Object { $_.Name -ieq $name } | Select-Object -First 1
+              if ($null -ne $property) {
+                return $property.Value
+              }
+            }
+
+            return $null
+          }
+
           if ([string]::IsNullOrWhiteSpace($env:JIRA_BASE_URL)) { throw "Missing JIRA_BASE_URL." }
           if ([string]::IsNullOrWhiteSpace($env:JIRA_PAT)) { throw "Missing JIRA_PAT." }
           if ($env:JIRA_KEY -notmatch '^[A-Z][A-Z0-9]+-[0-9]+$') { throw "Invalid Jira key: $env:JIRA_KEY" }
@@ -57,12 +77,58 @@ jobs:
           $issue = Invoke-RestMethod -Method Get -Uri "$baseUrl/rest/api/2/issue/$env:JIRA_KEY" -Headers $headers
           Write-Host "Resolved Jira issue: $($issue.key) - $($issue.fields.summary)"
 
+          $payload = $null
+          $payloadText = $env:PAYLOAD_JSON
+          if (-not [string]::IsNullOrWhiteSpace($payloadText) -and $payloadText.Trim() -ne "{}") {
+            try {
+              $payload = $payloadText | ConvertFrom-Json
+            } catch {
+              throw "PAYLOAD_JSON was provided but was not valid JSON. $($_.Exception.Message)"
+            }
+          }
+
+          $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $commentLines = @(
+            "GitHub Actions Jira update completed.",
+            "",
+            "Run: $runUrl"
+          )
+
+          if ($null -ne $payload) {
+            $commentLines += ""
+            $commentLines += "Deployment audit:"
+
+            $fieldMap = @(
+              @{ Label = "Status"; Names = @("status", "STATUS") },
+              @{ Label = "App object"; Names = @("app_object_name", "APP_OBJECT_NAME") },
+              @{ Label = "Environment source"; Names = @("environment_source", "ENVIRONMENT_SOURCE") },
+              @{ Label = "Environment target"; Names = @("environment_target", "ENVIRONMENT_TARGET") },
+              @{ Label = "GitHub repo"; Names = @("github_repo", "GITHUB_REPO") },
+              @{ Label = "GitHub branch"; Names = @("github_branch", "GITHUB_BRANCH") },
+              @{ Label = "GitHub commit SHA"; Names = @("github_commit_sha", "GITHUB_COMMIT_SHA") },
+              @{ Label = "GitHub commit URL"; Names = @("github_commit_url", "GITHUB_COMMIT_URL") },
+              @{ Label = "Code repo link"; Names = @("code_repo_link", "CODE_REPO_LINK") },
+              @{ Label = "Automation run ID"; Names = @("automation_run_id", "AUTOMATION_RUN_ID") },
+              @{ Label = "Error message"; Names = @("error_message", "ERROR_MESSAGE") }
+            )
+
+            foreach ($field in $fieldMap) {
+              $value = Get-PayloadValue -Payload $payload -Names $field["Names"]
+              if ($null -ne $value -and -not [string]::IsNullOrWhiteSpace([string]$value)) {
+                $commentLines += "$($field["Label"]): $value"
+              }
+            }
+          }
+
+          $commentText = $commentLines -join [Environment]::NewLine
           $commentBody = @{
-            body = "GitHub Actions Jira update test succeeded. Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-          } | ConvertTo-Json -Depth 5
+            body = $commentText
+          } | ConvertTo-Json -Depth 8
 
           if ([System.Convert]::ToBoolean($env:DRY_RUN)) {
             Write-Host "Dry run enabled. Would add Jira comment to $env:JIRA_KEY."
+            Write-Host "Comment preview:"
+            Write-Host $commentText
             return
           }
 
