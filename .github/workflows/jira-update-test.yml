@@ -87,17 +87,9 @@ jobs:
             }
           }
 
-          $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-          $commentLines = @(
-            "GitHub Actions Jira update completed.",
-            "",
-            "Run: $runUrl"
-          )
+          $commentLines = @("Deployment audit:")
 
           if ($null -ne $payload) {
-            $commentLines += ""
-            $commentLines += "Deployment audit:"
-
             $fieldMap = @(
               @{ Label = "Status"; Names = @("status", "STATUS") },
               @{ Label = "App object"; Names = @("app_object_name", "APP_OBJECT_NAME") },
@@ -118,6 +110,27 @@ jobs:
                 $commentLines += "$($field["Label"]): $value"
               }
             }
+          } else {
+            $commentLines += "No deployment payload was provided."
+          }
+
+          $promotionWorkflowUrl = Get-PayloadValue -Payload $payload -Names @("promotion_workflow_url", "PROMOTION_WORKFLOW_URL")
+          if ([string]::IsNullOrWhiteSpace([string]$promotionWorkflowUrl)) {
+            $githubRepo = Get-PayloadValue -Payload $payload -Names @("github_repo", "GITHUB_REPO")
+            if (-not [string]::IsNullOrWhiteSpace([string]$githubRepo)) {
+              $promotionWorkflowFile = Get-PayloadValue -Payload $payload -Names @("promotion_workflow_file", "PROMOTION_WORKFLOW_FILE")
+              if ([string]::IsNullOrWhiteSpace([string]$promotionWorkflowFile)) {
+                $promotionWorkflowFile = "qlik-prod-promotion.yml"
+              }
+              $promotionWorkflowUrl = "https://github.com/$githubRepo/actions/workflows/$promotionWorkflowFile"
+            }
+          }
+
+          $commentLines += ""
+          if (-not [string]::IsNullOrWhiteSpace([string]$promotionWorkflowUrl)) {
+            $commentLines += "Please validate. Once Validated, please send to the Space Owner for final production migration here: $promotionWorkflowUrl"
+          } else {
+            $commentLines += "Please validate. Once Validated, please send to the Space Owner for final production migration. Promotion workflow URL unavailable; include GITHUB_REPO in payload_json."
           }
 
           $commentText = $commentLines -join [Environment]::NewLine
