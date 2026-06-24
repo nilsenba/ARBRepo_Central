@@ -63,6 +63,24 @@ jobs:
             return $null
           }
 
+          function Format-JiraLink {
+            param(
+              [string]$Label,
+              [string]$Url,
+              [string]$Fallback
+            )
+
+            if ([string]::IsNullOrWhiteSpace($Label)) {
+              $Label = $Fallback
+            }
+
+            if ([string]::IsNullOrWhiteSpace($Url)) {
+              return $Label
+            }
+
+            return "[$Label|$Url]"
+          }
+
           if ([string]::IsNullOrWhiteSpace($env:JIRA_BASE_URL)) { throw "Missing JIRA_BASE_URL." }
           if ([string]::IsNullOrWhiteSpace($env:JIRA_PAT)) { throw "Missing JIRA_PAT." }
           if ($env:JIRA_KEY -notmatch '^[A-Z][A-Z0-9]+-[0-9]+$') { throw "Invalid Jira key: $env:JIRA_KEY" }
@@ -126,11 +144,21 @@ jobs:
             }
           }
 
+          $appName = Get-PayloadValue -Payload $payload -Names @("qlik_app_name", "QLIK_APP_NAME", "app_name", "APP_NAME", "app_object_name", "APP_OBJECT_NAME")
+          $appUrl = Get-PayloadValue -Payload $payload -Names @("qlik_app_url", "QLIK_APP_URL", "app_url", "APP_URL")
+          $spaceName = Get-PayloadValue -Payload $payload -Names @("qlik_space_name", "QLIK_SPACE_NAME", "space_name", "SPACE_NAME", "source_container_name", "SOURCE_CONTAINER_NAME")
+          $spaceUrl = Get-PayloadValue -Payload $payload -Names @("qlik_space_url", "QLIK_SPACE_URL", "space_url", "SPACE_URL")
+
+          $appLink = Format-JiraLink -Label ([string]$appName) -Url ([string]$appUrl) -Fallback "the application"
+          $spaceLink = Format-JiraLink -Label ([string]$spaceName) -Url ([string]$spaceUrl) -Fallback "the Qlik Space"
+
           $commentLines += ""
+          $commentLines += "Please validate the application: $appLink."
+
           if (-not [string]::IsNullOrWhiteSpace([string]$promotionWorkflowUrl)) {
-            $commentLines += "Please validate. Once Validated, please send to the Space Owner for final production migration here: $promotionWorkflowUrl"
+            $commentLines += "Once validation is completed, assign the ticket to the owner of $spaceLink for signoff and migration. $promotionWorkflowUrl"
           } else {
-            $commentLines += "Please validate. Once Validated, please send to the Space Owner for final production migration. Promotion workflow URL unavailable; include GITHUB_REPO in payload_json."
+            $commentLines += "Once validation is completed, assign the ticket to the owner of $spaceLink for signoff and migration. Promotion workflow URL unavailable; include GITHUB_REPO in payload_json."
           }
 
           $commentText = $commentLines -join [Environment]::NewLine
